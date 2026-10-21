@@ -42,6 +42,7 @@ function createSheetApi() {
     return {
         getMaster: () => get('master'),
         getRecords: () => get('records'),
+        getLines: () => get('lines'),
         addRecord: (record) => post({ action: 'addRecord', ...record }),
         updateRecord: (id, fields) => post({ action: 'updateRecord', id, ...fields }),
         deleteRecord: (id) => post({ action: 'deleteRecord', id }),
@@ -71,6 +72,7 @@ function createDemoApi() {
     return {
         getMaster: async () => load(MASTER_KEY, SAMPLE_MASTER),
         getRecords: async () => load(RECORD_KEY, []),
+        getLines: async () => ['1라인', '2라인', 'OA'],
         addRecord: async (record) => {
             const records = load(RECORD_KEY, []);
             const saved = { ...record, id: String(Date.now()), createdAt: formatDateTime(new Date()) };
@@ -116,20 +118,85 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingDeleteId = null;
 
     // 연속 등록 시 다시 입력하지 않도록 기기에 기억해 두는 항목
+    // (사용라인은 선택 목록이라 목록을 받은 뒤에 다시 맞춤 → restoreLine)
     const REMEMBER = { writer: 'shortage_writer', line: 'shortage_line' };
 
     if (DEMO_MODE) $('demoBanner').classList.remove('hidden');
 
+    function remembered(key) {
+        try { return localStorage.getItem(key) || ''; } catch { return ''; }
+    }
+
     function restoreRemembered() {
-        Object.entries(REMEMBER).forEach(([id, key]) => {
-            try { $(id).value = localStorage.getItem(key) || ''; } catch { /* 무시 */ }
-        });
+        $('writer').value = remembered(REMEMBER.writer);
+        restoreLine();
     }
 
     function saveRemembered(record) {
         Object.entries(REMEMBER).forEach(([id, key]) => {
             try { localStorage.setItem(key, record[id]); } catch { /* 저장 불가 시 무시 */ }
         });
+    }
+
+    /* ---------- 사용라인 (구글 시트 '라인명' 시트) ----------
+     * 마지막으로 받은 목록을 기기에 저장해 두고 먼저 보여준 뒤, 최신 목록으로 바꿉니다.
+     * 목록을 한 번도 못 받았으면(시트 없음/연결 오류) 직접 입력 칸으로 바꿉니다.
+     */
+    const LINES_CACHE_KEY = 'shortage_lines_cache';
+    let lineManualMode = false;
+
+    function lineValue() {
+        return (lineManualMode ? $('lineManual') : $('line')).value.trim();
+    }
+
+    function restoreLine() {
+        const saved = remembered(REMEMBER.line);
+        if (lineManualMode) {
+            $('lineManual').value = saved;
+        } else if ([...$('line').options].some((o) => o.value === saved)) {
+            $('line').value = saved;
+        }
+    }
+
+    function setLineManual(manual) {
+        lineManualMode = manual;
+        $('line').classList.toggle('hidden', manual);
+        $('line').required = !manual;
+        $('lineManual').classList.toggle('hidden', !manual);
+        $('lineManual').required = manual;
+    }
+
+    function applyLines(lines) {
+        const current = lineValue();
+        $('line').innerHTML = '<option value="" disabled selected>선택</option>' +
+            lines.map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+        setLineManual(false);
+        // 고르던 값이 있으면 유지, 없으면 지난번 선택
+        if (current && lines.includes(current)) $('line').value = current;
+        else restoreLine();
+    }
+
+    async function loadLines() {
+        let hasList = false;
+        try {
+            const cached = JSON.parse(localStorage.getItem(LINES_CACHE_KEY));
+            if (Array.isArray(cached) && cached.length) {
+                applyLines(cached);
+                hasList = true;
+            }
+        } catch { /* 저장된 목록 없음 */ }
+
+        try {
+            const lines = await api.getLines();
+            if (!lines.length) throw new Error('EMPTY');
+            applyLines(lines);
+            try { localStorage.setItem(LINES_CACHE_KEY, JSON.stringify(lines)); } catch { /* 저장 불가 시 무시 */ }
+        } catch {
+            if (!hasList) {
+                setLineManual(true);
+                restoreLine();
+            }
+        }
     }
 
     restoreRemembered();
@@ -380,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 응답을 못 받았을 때 실제 저장 여부 확인 + 재전송 시 중복 방지용
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             writer: $('writer').value.trim(),
-            line: $('line').value.trim(),
+            line: lineValue(),
             partNo: $('partNo').value.trim().toUpperCase(),
             partName: $('partName').value.trim(),
             vendor: $('vendor').value.trim(),
@@ -672,5 +739,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* ---------- 시작 ---------- */
     loadMaster();
+    loadLines();
     loadRecords(); // 헤더의 전체/대기/완료 건수 표시용
 });

@@ -69,7 +69,12 @@
                         </div>
                         <div class="field">
                             <label for="line">사용라인</label>
-                            <input type="text" id="line" name="line" placeholder="예: 1라인" enterkeyhint="next" required>
+                            <!-- 목록은 구글 시트의 '라인명' 시트에서 불러옴 -->
+                            <select id="line" name="line" required>
+                                <option value="">불러오는 중...</option>
+                            </select>
+                            <!-- 라인 목록을 못 불러왔을 때만 보이는 직접 입력 칸 -->
+                            <input type="text" id="lineManual" class="hidden" placeholder="예: 1라인" enterkeyhint="next">
                         </div>
                     </div>
                 </div>
