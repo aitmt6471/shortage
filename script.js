@@ -135,13 +135,26 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreRemembered();
 
     /* ---------- 탭 ---------- */
+    function showTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+        const isStatus = tab === 'status';
+        $('submitSection').classList.toggle('hidden', isStatus);
+        $('statusSection').classList.toggle('hidden', !isStatus);
+        document.body.classList.toggle('on-status', isStatus);
+        $('partSuggest').classList.add('hidden');
+        window.scrollTo(0, 0);
+        if (isStatus) loadRecords();
+    }
+
     document.querySelectorAll('.tab-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-            const isStatus = btn.dataset.tab === 'status';
-            $('submitSection').classList.toggle('hidden', isStatus);
-            $('statusSection').classList.toggle('hidden', !isStatus);
-            if (isStatus) loadRecords();
+        btn.addEventListener('click', () => showTab(btn.dataset.tab));
+    });
+
+    // 헤더의 전체/대기/완료 건수 → 처리현황 탭에서 해당 상태만 보기
+    document.querySelectorAll('.sum-card').forEach((card) => {
+        card.addEventListener('click', () => {
+            setFilter(card.dataset.filter);
+            showTab('status');
         });
     });
 
@@ -321,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     $('partNo').addEventListener('input', () => {
+        $('clearPartNo').classList.toggle('hidden', !$('partNo').value);
         lookup();
         clearTimeout(suggestTimer);
         suggestTimer = setTimeout(renderSuggest, 150);
@@ -339,6 +353,21 @@ document.addEventListener('DOMContentLoaded', () => {
     $('partNo').addEventListener('blur', () => $('partSuggest').classList.add('hidden'));
     $('partNo').addEventListener('focus', renderSuggest);
     $('vendor').addEventListener('input', lookupManager);
+
+    $('clearPartNo').addEventListener('click', () => {
+        $('partNo').value = '';
+        $('clearPartNo').classList.add('hidden');
+        lookup();
+        $('partNo').focus();
+    });
+
+    /* ---------- 필요수량 −/+ ---------- */
+    document.querySelectorAll('.step-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const next = (parseInt($('qty').value, 10) || 0) + Number(btn.dataset.step);
+            $('qty').value = Math.max(1, next);
+        });
+    });
 
     /* ---------- 등록 ---------- */
     const form = $('shortageForm');
@@ -407,8 +436,10 @@ document.addEventListener('DOMContentLoaded', () => {
             saveRemembered(pendingRecord);
             form.reset();
             restoreRemembered();
+            $('clearPartNo').classList.add('hidden');
             lookup();
-            $('partNo').focus();
+            window.scrollTo(0, 0);
+            loadRecords(); // 헤더 건수 갱신
         } catch (err) {
             showNotification('등록 중 오류가 발생했습니다: ' + err.message, 'error');
         } finally {
@@ -419,104 +450,177 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 화면 아래에 잠깐 보여주고 사라지는 알림 (오류는 조금 더 오래)
+    let toastTimer = null;
+
     function showNotification(message, type) {
         $('notificationMessage').textContent = message;
-        $('notification').className = 'notification ' + type;
+        $('notification').className = 'toast ' + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(hideNotification, type === 'error' ? 6000 : 2500);
     }
 
     function hideNotification() {
-        $('notification').className = 'notification hidden';
+        $('notification').className = 'toast hidden';
     }
 
+    $('notification').addEventListener('click', hideNotification);
+
     /* ---------- 처리현황 ---------- */
+    // 핸드폰은 카드 목록(recordList), PC는 표(recordsTableBody)를 보여줌 — 둘 다 같은 내용으로 그림
+    const listViews = [$('recordList'), $('recordsTableBody')];
+    let currentFilter = '';
+
     async function loadRecords() {
-        $('recordsTableBody').innerHTML = '<tr><td colspan="11">불러오는 중...</td></tr>';
+        $('refreshBtn').classList.add('spinning');
+        if (!records.length) {
+            $('recordList').innerHTML = '<p class="no-records">불러오는 중...</p>';
+            $('recordsTableBody').innerHTML = '<tr><td colspan="11">불러오는 중...</td></tr>';
+        }
         $('noRecords').classList.add('hidden');
         try {
             records = await api.getRecords();
             renderRecords();
         } catch (err) {
-            $('recordsTableBody').innerHTML = `<tr><td colspan="11">불러오기 실패: ${escapeHtml(err.message)}</td></tr>`;
+            const msg = `불러오기 실패: ${escapeHtml(err.message)}`;
+            $('recordList').innerHTML = `<p class="no-records">${msg}</p>`;
+            $('recordsTableBody').innerHTML = `<tr><td colspan="11">${msg}</td></tr>`;
+        } finally {
+            $('refreshBtn').classList.remove('spinning');
         }
+    }
+
+    function setFilter(value) {
+        currentFilter = value;
+        document.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.filter === value));
+        renderRecords();
     }
 
     function filteredRecords() {
         const q = $('search').value.trim().toLowerCase();
-        const f = $('filter').value;
         return records.filter((r) => {
-            if (f && r.status !== f) return false;
+            if (currentFilter && r.status !== currentFilter) return false;
             if (!q) return true;
             return [r.partNo, r.partName, r.vendor, r.manager, r.line, r.writer].some((v) => String(v).toLowerCase().includes(q));
         });
     }
 
+    function badgeHtml(r) {
+        const done = r.status === '완료';
+        return `<button type="button" class="badge ${done ? 'done' : 'wait'}" data-act="toggle" title="눌러서 상태 변경">${escapeHtml(r.status || '대기')}</button>`;
+    }
+
+    function cardHtml(r) {
+        const done = r.status === '완료';
+        return `
+            <article class="rec-card ${done ? 'is-done' : ''}" data-id="${escapeHtml(r.id)}">
+                <div class="rec-top">
+                    <div>
+                        <div class="rec-part">${escapeHtml(r.partNo)}</div>
+                        <div class="rec-name">${escapeHtml(r.partName)}</div>
+                    </div>
+                    ${badgeHtml(r)}
+                </div>
+                <dl class="rec-grid">
+                    <div><dt>필요수량</dt><dd class="rec-qty">${escapeHtml(r.qty)} <small>EA</small></dd></div>
+                    <div><dt>사용라인</dt><dd>${escapeHtml(r.line)}</dd></div>
+                    <div><dt>업체</dt><dd>${escapeHtml(r.vendor)}</dd></div>
+                    <div><dt>담당자</dt><dd>${escapeHtml(r.manager) || '-'}</dd></div>
+                    <div><dt>작성자</dt><dd>${escapeHtml(r.writer)}</dd></div>
+                    <div><dt>등록일시</dt><dd>${escapeHtml(r.createdAt)}</dd></div>
+                </dl>
+                <div class="rec-bottom">
+                    <input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="비고 입력" enterkeyhint="done">
+                    <button type="button" class="del-btn" data-act="delete">삭제</button>
+                </div>
+            </article>`;
+    }
+
+    function rowHtml(r) {
+        return `
+            <tr data-id="${escapeHtml(r.id)}" class="${r.status === '완료' ? 'is-done' : ''}">
+                <td>${escapeHtml(r.createdAt)}</td>
+                <td>${escapeHtml(r.writer)}</td>
+                <td>${escapeHtml(r.line)}</td>
+                <td class="part-no">${escapeHtml(r.partNo)}</td>
+                <td class="name-cell">${escapeHtml(r.partName)}</td>
+                <td>${escapeHtml(r.vendor)}</td>
+                <td>${escapeHtml(r.manager)}</td>
+                <td class="qty-cell">${escapeHtml(r.qty)}</td>
+                <td>${badgeHtml(r)}</td>
+                <td class="note-cell"><input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="-"></td>
+                <td><button type="button" class="del-btn" data-act="delete">삭제</button></td>
+            </tr>`;
+    }
+
     function renderRecords() {
         const list = filteredRecords();
 
-        $('recordsTableBody').innerHTML = list.map((r) => `
-            <tr data-id="${escapeHtml(r.id)}">
-                <td data-label="등록일시">${escapeHtml(r.createdAt)}</td>
-                <td data-label="작성자">${escapeHtml(r.writer)}</td>
-                <td data-label="사용라인">${escapeHtml(r.line)}</td>
-                <td data-label="자재품번" class="part-no">${escapeHtml(r.partNo)}</td>
-                <td data-label="품명" class="name-cell">${escapeHtml(r.partName)}</td>
-                <td data-label="업체">${escapeHtml(r.vendor)}</td>
-                <td data-label="담당자">${escapeHtml(r.manager)}</td>
-                <td data-label="필요수량" class="qty-cell">${escapeHtml(r.qty)}</td>
-                <td data-label="처리현황"><button class="badge ${r.status === '완료' ? 'done' : 'wait'}" data-act="toggle" title="눌러서 상태 변경">${escapeHtml(r.status)}</button></td>
-                <td data-label="비고" class="note-cell"><input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="-"></td>
-                <td class="del-cell"><button class="del-btn" data-act="delete">삭제</button></td>
-            </tr>`).join('');
+        $('recordList').innerHTML = list.map(cardHtml).join('');
+        $('recordsTableBody').innerHTML = list.map(rowHtml).join('');
 
+        const waitCount = records.filter((r) => r.status !== '완료').length;
         $('noRecords').classList.toggle('hidden', list.length > 0);
         $('cntAll').textContent = records.length;
-        $('cntWait').textContent = records.filter((r) => r.status !== '완료').length;
-        $('cntDone').textContent = records.filter((r) => r.status === '완료').length;
+        $('cntWait').textContent = waitCount;
+        $('cntDone').textContent = records.length - waitCount;
+        $('tabWaitBadge').textContent = waitCount > 99 ? '99+' : waitCount;
+        $('tabWaitBadge').classList.toggle('hidden', waitCount === 0);
     }
 
     $('search').addEventListener('input', renderRecords);
-    $('filter').addEventListener('change', renderRecords);
+    document.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => setFilter(btn.dataset.filter));
+    });
     $('refreshBtn').addEventListener('click', loadRecords);
 
-    // 상태 변경 / 삭제
-    $('recordsTableBody').addEventListener('click', async (e) => {
-        const act = e.target.dataset.act;
-        const row = e.target.closest('tr');
-        if (!row || !act) return;
-        const rec = records.find((r) => r.id === row.dataset.id);
-        if (!rec) return;
+    const recordOf = (el) => {
+        const holder = el.closest('[data-id]');
+        return holder ? records.find((r) => r.id === holder.dataset.id) : null;
+    };
 
-        if (act === 'toggle') {
-            rec.status = rec.status === '완료' ? '대기' : '완료';
-            renderRecords();
-            try {
-                await api.updateRecord(rec.id, { status: rec.status });
-            } catch (err) {
-                alert('상태 변경 응답을 받지 못했습니다. 목록을 다시 불러옵니다.\n' + err.message);
-                loadRecords();
+    listViews.forEach((view) => {
+        // 상태 변경 / 삭제
+        view.addEventListener('click', async (e) => {
+            const act = e.target.closest('[data-act]')?.dataset.act;
+            if (act !== 'toggle' && act !== 'delete') return;
+            const rec = recordOf(e.target);
+            if (!rec) return;
+
+            if (act === 'toggle') {
+                rec.status = rec.status === '완료' ? '대기' : '완료';
+                renderRecords();
+                showNotification(`[${rec.partNo}] ${rec.status}(으)로 변경했습니다.`, 'success');
+                try {
+                    await api.updateRecord(rec.id, { status: rec.status });
+                } catch (err) {
+                    showNotification('상태 변경 응답을 받지 못했습니다. 목록을 다시 불러옵니다.', 'error');
+                    loadRecords();
+                }
+            } else {
+                pendingDeleteId = rec.id;
+                $('deleteDescription').innerHTML = `[${escapeHtml(rec.partNo)}] ${escapeHtml(rec.partName)}<br>내역을 삭제하시겠습니까?`;
+                $('deleteModal').classList.remove('hidden');
             }
-        } else if (act === 'delete') {
-            pendingDeleteId = rec.id;
-            $('deleteDescription').innerHTML = `[${escapeHtml(rec.partNo)}] ${escapeHtml(rec.partName)}<br>내역을 삭제하시겠습니까?`;
-            $('deleteModal').classList.remove('hidden');
-        }
-    });
+        });
 
-    // 비고 수정 (칸에서 벗어나거나 Enter 시 저장)
-    $('recordsTableBody').addEventListener('change', async (e) => {
-        if (e.target.dataset.act !== 'note') return;
-        const rec = records.find((r) => r.id === e.target.closest('tr').dataset.id);
-        if (!rec) return;
-        rec.note = e.target.value.trim();
-        try {
-            await api.updateRecord(rec.id, { note: rec.note });
-        } catch (err) {
-            alert('비고 저장 실패: ' + err.message);
-        }
-    });
+        // 비고 수정 (칸에서 벗어나거나 Enter 시 저장)
+        view.addEventListener('change', async (e) => {
+            if (e.target.dataset.act !== 'note') return;
+            const rec = recordOf(e.target);
+            if (!rec) return;
+            rec.note = e.target.value.trim();
+            try {
+                await api.updateRecord(rec.id, { note: rec.note });
+                showNotification('비고를 저장했습니다.', 'success');
+            } catch (err) {
+                showNotification('비고 저장 실패: ' + err.message, 'error');
+            }
+        });
 
-    $('recordsTableBody').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.target.dataset.act === 'note') e.target.blur();
+        view.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.dataset.act === 'note') e.target.blur();
+        });
     });
 
     $('deleteNo').addEventListener('click', () => $('deleteModal').classList.add('hidden'));
@@ -528,8 +632,9 @@ document.addEventListener('DOMContentLoaded', () => {
             await api.deleteRecord(pendingDeleteId);
             records = records.filter((r) => r.id !== pendingDeleteId);
             renderRecords();
+            showNotification('삭제했습니다.', 'success');
         } catch (err) {
-            alert('삭제 응답을 받지 못했습니다. 목록을 다시 불러옵니다.\n' + err.message);
+            showNotification('삭제 응답을 받지 못했습니다. 목록을 다시 불러옵니다.', 'error');
             loadRecords();
         } finally {
             pendingDeleteId = null;
