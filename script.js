@@ -542,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('refreshBtn').classList.add('spinning');
         if (!records.length) {
             $('recordList').innerHTML = '<p class="no-records">불러오는 중...</p>';
-            $('recordsTableBody').innerHTML = '<tr><td colspan="11">불러오는 중...</td></tr>';
+            $('recordsTableBody').innerHTML = '<tr><td colspan="12">불러오는 중...</td></tr>';
         }
         $('noRecords').classList.add('hidden');
         try {
@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             const msg = `불러오기 실패: ${escapeHtml(err.message)}`;
             $('recordList').innerHTML = `<p class="no-records">${msg}</p>`;
-            $('recordsTableBody').innerHTML = `<tr><td colspan="11">${msg}</td></tr>`;
+            $('recordsTableBody').innerHTML = `<tr><td colspan="12">${msg}</td></tr>`;
         } finally {
             $('refreshBtn').classList.remove('spinning');
         }
@@ -577,6 +577,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<button type="button" class="badge ${done ? 'done' : 'wait'}" data-act="toggle" title="눌러서 상태 변경">${escapeHtml(r.status || '대기')}</button>`;
     }
 
+    // 입고일정: 날짜를 누르면 핸드폰/PC 기본 달력이 열림
+    // 대기 상태인데 입고일정이 지났으면 빨간색으로 표시
+    function dateHtml(r) {
+        const late = r.arrivalDate && r.status !== '완료' && r.arrivalDate < formatDateTime(new Date()).slice(0, 10);
+        return `<input type="date" class="date-input ${late ? 'late' : ''} ${r.arrivalDate ? '' : 'empty'}" value="${escapeHtml(r.arrivalDate)}" data-act="arrival" aria-label="입고일정">`;
+    }
+
     function cardHtml(r) {
         const done = r.status === '완료';
         return `
@@ -596,6 +603,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><dt>작성자</dt><dd>${escapeHtml(r.writer)}</dd></div>
                     <div><dt>등록일시</dt><dd>${escapeHtml(r.createdAt)}</dd></div>
                 </dl>
+                <label class="rec-date">
+                    <span>입고일정</span>
+                    ${dateHtml(r)}
+                </label>
                 <div class="rec-bottom">
                     <input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="비고 입력" enterkeyhint="done">
                     <button type="button" class="del-btn" data-act="delete">삭제</button>
@@ -614,6 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${escapeHtml(r.vendor)}</td>
                 <td>${escapeHtml(r.manager)}</td>
                 <td class="qty-cell">${escapeHtml(r.qty)}</td>
+                <td>${dateHtml(r)}</td>
                 <td>${badgeHtml(r)}</td>
                 <td class="note-cell"><input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="-"></td>
                 <td><button type="button" class="del-btn" data-act="delete">삭제</button></td>
@@ -649,6 +661,11 @@ document.addEventListener('DOMContentLoaded', () => {
     listViews.forEach((view) => {
         // 상태 변경 / 삭제
         view.addEventListener('click', async (e) => {
+            // PC 크롬은 달력 아이콘만 눌러야 열려서, 칸 어디를 눌러도 달력이 열리게
+            if (e.target.dataset.act === 'arrival') {
+                try { e.target.showPicker(); } catch { /* 지원 안 하는 브라우저는 기본 동작 */ }
+                return;
+            }
             const act = e.target.closest('[data-act]')?.dataset.act;
             if (act !== 'toggle' && act !== 'delete') return;
             const rec = recordOf(e.target);
@@ -671,17 +688,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 비고 수정 (칸에서 벗어나거나 Enter 시 저장)
+        // 비고 수정 (칸에서 벗어나거나 Enter 시 저장) / 입고일정 선택
         view.addEventListener('change', async (e) => {
-            if (e.target.dataset.act !== 'note') return;
+            const act = e.target.dataset.act;
+            if (act !== 'note' && act !== 'arrival') return;
             const rec = recordOf(e.target);
             if (!rec) return;
-            rec.note = e.target.value.trim();
+
+            if (act === 'note') {
+                rec.note = e.target.value.trim();
+                try {
+                    await api.updateRecord(rec.id, { note: rec.note });
+                    showNotification('비고를 저장했습니다.', 'success');
+                } catch (err) {
+                    showNotification('비고 저장 실패: ' + err.message, 'error');
+                }
+                return;
+            }
+
+            rec.arrivalDate = e.target.value; // 지우면 '' 로 저장
+            renderRecords();
             try {
-                await api.updateRecord(rec.id, { note: rec.note });
-                showNotification('비고를 저장했습니다.', 'success');
+                await api.updateRecord(rec.id, { arrivalDate: rec.arrivalDate });
+                showNotification(rec.arrivalDate ? `입고일정 ${rec.arrivalDate} 저장했습니다.` : '입고일정을 지웠습니다.', 'success');
             } catch (err) {
-                showNotification('비고 저장 실패: ' + err.message, 'error');
+                showNotification('입고일정 저장 실패: ' + err.message, 'error');
             }
         });
 
@@ -718,8 +749,8 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---------- 엑셀(CSV) 저장 ---------- */
     $('exportBtn').addEventListener('click', () => {
         const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const rows = [['등록일시', '작성자', '사용라인', '자재품번', '품명', '업체', '담당자', '필요수량', '처리현황', '비고']];
-        filteredRecords().forEach((r) => rows.push([r.createdAt, r.writer, r.line, r.partNo, r.partName, r.vendor, r.manager, r.qty, r.status, r.note]));
+        const rows = [['등록일시', '작성자', '사용라인', '자재품번', '품명', '업체', '담당자', '필요수량', '입고일정', '처리현황', '비고']];
+        filteredRecords().forEach((r) => rows.push([r.createdAt, r.writer, r.line, r.partNo, r.partName, r.vendor, r.manager, r.qty, r.arrivalDate, r.status, r.note]));
         // BOM: 엑셀에서 한글 깨짐 방지
         const csv = '﻿' + rows.map((row) => row.map(cell).join(',')).join('\r\n');
 

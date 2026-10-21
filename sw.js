@@ -4,7 +4,7 @@
  * - 항상 인터넷에서 최신 파일을 먼저 받고, 안 될 때만 보관본을 씁니다. (파일을 고치면 바로 반영)
  * - 구글 시트(Apps Script) 데이터 요청은 건드리지 않습니다.
  */
-const CACHE_NAME = 'shortage-app-v3';
+const CACHE_NAME = 'shortage-app-v4';
 const APP_FILES = ['./', './index.html', './style.css', './script.js', './ait-logo.png', './icon-192.png', './icon-512.png', './manifest.json'];
 
 self.addEventListener('install', (event) => {

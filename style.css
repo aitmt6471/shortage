@@ -654,6 +654,44 @@ body.on-status .toast {
     color: var(--navy);
 }
 
+/* 입고일정 (달력) */
+.rec-date {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.rec-date > span {
+    flex-shrink: 0;
+    width: 58px;
+    font-size: 12px;
+    color: var(--sub);
+}
+
+.date-input {
+    flex: 1;
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--navy);
+    cursor: pointer;
+}
+
+.date-input:focus { outline: 2px solid var(--blue); border-color: transparent; }
+
+.date-input.empty { color: #9aa1ab; font-weight: normal; }
+.date-input::-webkit-date-and-time-value { text-align: left; }
+
+/* 대기인데 입고일정이 지남 */
+.date-input.late { color: var(--danger); border-color: #f1c7c2; background: #fff6f5; }
+
 .rec-bottom {
     display: flex;
     align-items: center;
@@ -915,6 +953,15 @@ body.on-status .toast {
     .records-table .note-input:focus { outline: none; border-color: var(--blue); background: #fff; }
 
     .records-table .del-btn { height: 32px; border: none; background: none; }
+
+    .records-table .date-input {
+        width: 150px;
+        min-height: 0;
+        padding: 5px 8px;
+        font-size: 14px;
+    }
+
+    .records-table .date-input:not(.late) { border-color: var(--line); }
 
     .btn:hover { background: #f0f3f7; }
     .btn.primary:hover { background: var(--blue-dark); }
