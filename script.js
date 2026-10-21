@@ -584,6 +584,46 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<input type="date" class="date-input ${late ? 'late' : ''} ${r.arrivalDate ? '' : 'empty'}" value="${escapeHtml(r.arrivalDate)}" data-act="arrival" aria-label="입고일정">`;
     }
 
+    /**
+     * 핸드폰 카드용 입고일정 선택 칸
+     * 아이폰은 빈 날짜 칸에 아무것도 안 보여서, 보이는 글자는 따로 그리고
+     * 그 위에 투명한 날짜 칸을 덮어 누르면 핸드폰 달력이 열리게 합니다.
+     */
+    const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+    function datePickHtml(r) {
+        let text = '날짜 선택';
+        let chip = '';
+        let state = 'empty';
+
+        if (r.arrivalDate) {
+            const [y, m, d] = r.arrivalDate.split('-').map(Number);
+            const day = new Date(y, m - 1, d);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diff = Math.round((day - today) / 86400000);
+
+            text = `${r.arrivalDate} (${WEEKDAYS[day.getDay()]})`;
+            state = 'set';
+            if (r.status === '완료') chip = '';
+            else if (diff > 0) chip = `<em class="dday">D-${diff}</em>`;
+            else if (diff === 0) { chip = '<em class="dday today">오늘</em>'; state = 'today'; }
+            else { chip = `<em class="dday late">${-diff}일 지남</em>`; state = 'late'; }
+        }
+
+        return `
+            <label class="date-pick ${state}">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+                <span class="dp-body">
+                    <span class="dp-label">입고일정</span>
+                    <span class="dp-value">${escapeHtml(text)}</span>
+                </span>
+                ${chip}
+                <span class="dp-arrow">›</span>
+                <input type="date" class="dp-input" value="${escapeHtml(r.arrivalDate)}" data-act="arrival" aria-label="입고일정 선택">
+            </label>`;
+    }
+
     function cardHtml(r) {
         const done = r.status === '완료';
         return `
@@ -595,18 +635,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     ${badgeHtml(r)}
                 </div>
-                <dl class="rec-grid">
-                    <div><dt>필요수량</dt><dd class="rec-qty">${escapeHtml(r.qty)} <small>EA</small></dd></div>
-                    <div><dt>사용라인</dt><dd>${escapeHtml(r.line)}</dd></div>
+                <div class="rec-key">
+                    <div><span>필요수량</span><strong>${escapeHtml(r.qty)}<small> EA</small></strong></div>
+                    <div><span>사용라인</span><strong>${escapeHtml(r.line)}</strong></div>
+                </div>
+                ${datePickHtml(r)}
+                <dl class="rec-info">
                     <div><dt>업체</dt><dd>${escapeHtml(r.vendor)}</dd></div>
                     <div><dt>담당자</dt><dd>${escapeHtml(r.manager) || '-'}</dd></div>
                     <div><dt>작성자</dt><dd>${escapeHtml(r.writer)}</dd></div>
                     <div><dt>등록일시</dt><dd>${escapeHtml(r.createdAt)}</dd></div>
+                    ${done && r.doneAt ? `<div><dt>완료일시</dt><dd>${escapeHtml(r.doneAt)}</dd></div>` : ''}
                 </dl>
-                <label class="rec-date">
-                    <span>입고일정</span>
-                    ${dateHtml(r)}
-                </label>
                 <div class="rec-bottom">
                     <input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="비고 입력" enterkeyhint="done">
                     <button type="button" class="del-btn" data-act="delete">삭제</button>
@@ -663,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
         view.addEventListener('click', async (e) => {
             // PC 크롬은 달력 아이콘만 눌러야 열려서, 칸 어디를 눌러도 달력이 열리게
             if (e.target.dataset.act === 'arrival') {
-                try { e.target.showPicker(); } catch { /* 지원 안 하는 브라우저는 기본 동작 */ }
+                try { e.target.showPicker(); } catch { /* 지원 안 하는 브라우저·이미 열림은 기본 동작 */ }
                 return;
             }
             const act = e.target.closest('[data-act]')?.dataset.act;
