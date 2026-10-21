@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1f3a5f">
+    <title>자재결품 처리현황</title>
+    <meta name="description" content="자재결품 등록 및 처리현황 관리">
+
+    <!-- 앱 설치(홈 화면에 추가)용 -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="자재결품">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- 헤더 -->
+    <header class="header">
+        <div class="header-top">
+            <span class="logo-wrap"><img src="ait-logo.png" alt="AIT" class="logo"></span>
+            <h1>자재결품 처리현황</h1>
+        </div>
+        <div class="summary">
+            <div class="card"><span>전체</span><strong id="cntAll">-</strong></div>
+            <div class="card wait"><span>대기</span><strong id="cntWait">-</strong></div>
+            <div class="card done"><span>완료</span><strong id="cntDone">-</strong></div>
+        </div>
+    </header>
+
+    <!-- 탭 -->
+    <nav class="tabs">
+        <button type="button" class="tab-btn active" data-tab="submit">결품 등록</button>
+        <button type="button" class="tab-btn" data-tab="status">처리현황</button>
+    </nav>
+
+    <main class="container">
+        <div id="demoBanner" class="demo-banner hidden">
+            데모 모드: 구글 시트가 연결되지 않아 이 기기에만 저장됩니다.
+        </div>
+
+        <!-- 결품 등록 -->
+        <section id="submitSection" class="panel">
+            <form id="shortageForm" autocomplete="off">
+                <div class="field">
+                    <label for="writer">작성자</label>
+                    <input type="text" id="writer" name="writer" placeholder="이름 입력" required>
+                </div>
+
+                <div class="field">
+                    <label for="line">사용라인</label>
+                    <input type="text" id="line" name="line" placeholder="예: 1라인" required>
+                </div>
+
+                <div class="field suggest-wrap">
+                    <label for="partNo">자재품번</label>
+                    <input type="text" id="partNo" name="partNo" placeholder="품번 입력" required>
+                    <ul id="partSuggest" class="suggest hidden"></ul>
+                    <p id="lookupMsg" class="lookup-msg"></p>
+                </div>
+
+                <!-- 품번으로 자동 입력되는 영역 -->
+                <div class="auto-box">
+                    <div class="field">
+                        <label for="partName">품명</label>
+                        <input type="text" id="partName" name="partName" placeholder="자동 입력" readonly required>
+                    </div>
+                    <div class="field">
+                        <label for="vendor">업체</label>
+                        <input type="text" id="vendor" name="vendor" list="vendorList" placeholder="자동 입력" readonly required>
+                        <datalist id="vendorList"></datalist>
+                    </div>
+                    <div class="field">
+                        <label for="manager">담당자</label>
+                        <input type="text" id="manager" name="manager" placeholder="자동 입력" readonly required>
+                    </div>
+                    <label class="check hidden" id="saveMasterWrap">
+                        <input type="checkbox" id="saveMaster" checked> 자재마스터 / 업체담당자 시트에도 저장
+                    </label>
+                </div>
+
+                <div class="field">
+                    <label for="qty">필요수량</label>
+                    <div class="qty-wrap">
+                        <input type="number" id="qty" name="qty" min="1" step="1" inputmode="numeric" placeholder="0" required>
+                        <span class="unit">EA</span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="note">비고</label>
+                    <textarea id="note" name="note" rows="3" placeholder="특이사항 입력"></textarea>
+                </div>
+
+                <button type="submit" class="submit-btn">
+                    <span class="btn-text">등록</span>
+                    <span class="loader" style="display: none;"></span>
+                </button>
+            </form>
+
+            <div id="notification" class="notification hidden">
+                <p id="notificationMessage"></p>
+            </div>
+        </section>
+
+        <!-- 처리현황 -->
+        <section id="statusSection" class="panel hidden">
+            <div class="toolbar">
+                <input type="text" id="search" placeholder="품번 / 품명 / 업체 / 담당자 / 라인 / 작성자 검색">
+                <select id="filter">
+                    <option value="">전체</option>
+                    <option value="대기">대기</option>
+                    <option value="완료">완료</option>
+                </select>
+                <button type="button" class="btn" id="refreshBtn">새로고침</button>
+                <button type="button" class="btn" id="exportBtn">엑셀 저장</button>
+            </div>
+
+            <div class="table-wrap">
+                <table class="records-table">
+                    <thead>
+                        <tr>
+                            <th>등록일시</th>
+                            <th>작성자</th>
+                            <th>사용라인</th>
+                            <th>자재품번</th>
+                            <th>품명</th>
+                            <th>업체</th>
+                            <th>담당자</th>
+                            <th>필요수량</th>
+                            <th>처리현황</th>
+                            <th>비고</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordsTableBody"></tbody>
+                </table>
+            </div>
+            <p class="no-records hidden" id="noRecords">등록된 결품 내역이 없습니다.</p>
+            <p class="hint">처리현황을 누르면 대기 ↔ 완료로 바뀌고, 비고는 바로 수정할 수 있습니다.</p>
+        </section>
+    </main>
+
+    <!-- 등록 확인 모달 -->
+    <div id="confirmModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>등록 내용 확인</h2>
+            <div class="confirm-details" id="confirmDetails"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn" id="cancelSubmit">취소</button>
+                <button type="button" class="btn primary" id="confirmSubmit">등록</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 삭제 확인 모달 -->
+    <div id="deleteModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>내역 삭제</h2>
+            <p class="modal-description" id="deleteDescription">정말 삭제하시겠습니까?</p>
+            <div class="modal-actions">
+                <button type="button" class="btn" id="deleteNo">아니오</button>
+                <button type="button" class="btn danger" id="deleteYes">삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
