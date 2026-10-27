@@ -103,6 +103,15 @@ function formatDateTime(d) {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+const formatNum = (n) => Number(n).toLocaleString('ko-KR');
+
+/** 2BOX(2,000EA) / 300EA — BOX로 등록한 건은 BOX 수와 EA 환산 수량을 함께 표시 */
+function qtyText(r) {
+    const ea = Number(r.qty) || 0;
+    const box = Number(r.boxCount) || 0;
+    return box ? `${formatNum(box)}BOX(${formatNum(ea)}EA)` : `${formatNum(ea)}EA`;
+}
+
 function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -117,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let records = [];
     let pendingRecord = null;
     let pendingDeleteId = null;
+    let selectedFinishedProduct = '';
 
     // 연속 등록 시 다시 입력하지 않도록 기기에 기억해 두는 항목
     // (사용라인은 선택 목록이라 목록을 받은 뒤에 다시 맞춤 → restoreLine)
@@ -229,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---------- 자재 마스터 ---------- */
     // 품번이 많아 서버에서 받는 데 시간이 걸리므로, 마지막으로 받은 목록을 기기에 저장해 두고
     // 화면을 열면 그것부터 바로 쓰고, 최신 목록은 뒤에서 받아 바꿔 끼웁니다.
-    const MASTER_CACHE_KEY = 'shortage_master_cache';
+    const MASTER_CACHE_KEY = 'shortage_master_cache_v2'; // BOX당 수량 추가로 이전 캐시와 분리
     let masterLoaded = false;
 
     async function loadMaster() {
@@ -274,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let vendorLoose = {};
 
     function findManager(vendor) {
+        if (Object.prototype.hasOwnProperty.call(master.vendors, vendor)) return master.vendors[vendor];
         const key = vendorKey(vendor);
         if (key in vendorExact) return vendorExact[key];
         const loose = vendorLoose[stripParen(key)];
@@ -295,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
             masterLoaded = true;
             lookup();
         }
+        if (masterLoaded && !$('boxQty').value) fillBoxQty();
         partKeys = Object.keys(master.parts).sort();
         $('vendorList').innerHTML = Object.keys(master.vendors).sort()
             .map((v) => `<option value="${escapeHtml(v)}"></option>`)
@@ -343,14 +355,16 @@ document.addEventListener('DOMContentLoaded', () => {
             setLookupMsg('⚠ 등록되지 않은 품번입니다. 품명과 업체를 직접 입력해 주세요.', 'warn');
         }
         showFinishedProducts(master.finishedProducts[key] || []);
+        fillBoxQty();
         lookupManager();
     }
 
     function showFinishedProducts(products) {
         const uniqueProducts = [...new Set(products.filter(Boolean))];
+        if (!uniqueProducts.includes(selectedFinishedProduct)) selectedFinishedProduct = '';
         $('finishedProductWrap').classList.toggle('hidden', uniqueProducts.length === 0);
         $('finishedProductNos').innerHTML = uniqueProducts
-            .map((no) => `<span class="finished-product-no">${escapeHtml(no)}</span>`)
+            .map((no) => `<button type="button" class="finished-product-no ${no === selectedFinishedProduct ? 'active' : ''}" data-finished-product="${escapeHtml(no)}" aria-pressed="${no === selectedFinishedProduct}">${escapeHtml(no)}</button>`)
             .join('');
     }
 
@@ -430,6 +444,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     $('partNo').addEventListener('blur', () => $('partSuggest').classList.add('hidden'));
     $('partNo').addEventListener('focus', renderSuggest);
+    $('finishedProductNos').addEventListener('click', (e) => {
+        const button = e.target.closest('[data-finished-product]');
+        if (!button) return;
+        selectedFinishedProduct = button.dataset.finishedProduct;
+        showFinishedProducts(master.finishedProducts[$('partNo').value.trim().toUpperCase()] || []);
+    });
     $('vendor').addEventListener('input', lookupManager);
 
     $('clearPartNo').addEventListener('click', () => {
@@ -439,11 +459,30 @@ document.addEventListener('DOMContentLoaded', () => {
         $('partNo').focus();
     });
 
+    /* ---------- 필요수량(BOX) / BOX당 수량 ---------- */
+    // MES의 적입량이 1이면 BOX 수량이 등록 안 된 자재이므로 비워 두고 직접 입력하게 함
+    function fillBoxQty() {
+        const part = master.parts[$('partNo').value.trim().toUpperCase()];
+        const per = part ? Number(part.boxQty) : 0;
+        $('boxQty').value = per > 1 ? per : '';
+        updateBoxTotal();
+    }
+
+    function updateBoxTotal() {
+        const box = parseInt($('qty').value, 10) || 0;
+        const per = parseInt($('boxQty').value, 10) || 0;
+        $('boxTotal').textContent = (box && per ? `${box}BOX = ${formatNum(box * per)} EA` : 'BOX당 수량을 입력해 주세요');
+    }
+
+    $('qty').addEventListener('input', updateBoxTotal);
+    $('boxQty').addEventListener('input', updateBoxTotal);
+
     /* ---------- 필요수량 −/+ ---------- */
     document.querySelectorAll('.step-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const next = (parseInt($('qty').value, 10) || 0) + Number(btn.dataset.step);
             $('qty').value = Math.max(1, next);
+            updateBoxTotal();
         });
     });
 
@@ -460,10 +499,13 @@ document.addEventListener('DOMContentLoaded', () => {
             writer: $('writer').value.trim(),
             line: lineValue(),
             partNo: $('partNo').value.trim().toUpperCase(),
+            finishedProduct: selectedFinishedProduct,
             partName: $('partName').value.trim(),
             vendor: $('vendor').value.trim(),
             manager: $('manager').value.trim(),
-            qty: $('qty').value,
+            qty: Number($('qty').value) * Number($('boxQty').value), // EA 합계
+            boxCount: Number($('qty').value),
+            boxQty: Number($('boxQty').value),
             status: '대기', // 등록 시 항상 대기, 처리현황 탭에서 완료로 변경
             note: $('note').value.trim()
         };
@@ -472,10 +514,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ['작성자', pendingRecord.writer],
             ['사용라인', pendingRecord.line],
             ['자재품번', pendingRecord.partNo],
+            ['연결 완제품번호', pendingRecord.finishedProduct || '-'],
             ['품명', pendingRecord.partName],
             ['업체', pendingRecord.vendor],
             ['담당자', pendingRecord.manager],
-            ['필요수량', `${pendingRecord.qty} EA`],
+            ['필요수량', qtyText(pendingRecord)],
             ['비고', pendingRecord.note || '-']
         ];
         $('confirmDetails').innerHTML = rows.map(([label, value]) =>
@@ -579,7 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return records.filter((r) => {
             if (currentFilter && r.status !== currentFilter) return false;
             if (!q) return true;
-            return [r.partNo, r.partName, r.vendor, r.manager, r.line, r.writer].some((v) => String(v).toLowerCase().includes(q));
+            return [r.partNo, r.finishedProduct, r.partName, r.vendor, r.manager, r.line, r.writer].some((v) => String(v).toLowerCase().includes(q));
         });
     }
 
@@ -647,9 +690,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${badgeHtml(r)}
                 </div>
                 <div class="rec-key">
-                    <div><span>필요수량</span><strong>${escapeHtml(r.qty)}<small> EA</small></strong></div>
+                    <div><span>필요수량</span><strong>${escapeHtml(qtyText(r))}</strong></div>
                     <div><span>사용라인</span><strong>${escapeHtml(r.line)}</strong></div>
                 </div>
+                ${r.finishedProduct ? `<div class="rec-info"><div><dt>완제품번호</dt><dd>${escapeHtml(r.finishedProduct)}</dd></div></div>` : ''}
                 ${datePickHtml(r)}
                 <dl class="rec-info">
                     <div><dt>업체</dt><dd>${escapeHtml(r.vendor)}</dd></div>
@@ -672,10 +716,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${escapeHtml(r.writer)}</td>
                 <td>${escapeHtml(r.line)}</td>
                 <td class="part-no">${escapeHtml(r.partNo)}</td>
+                <td class="part-no">${escapeHtml(r.finishedProduct || '-')}</td>
                 <td class="name-cell">${escapeHtml(r.partName)}</td>
                 <td>${escapeHtml(r.vendor)}</td>
                 <td>${escapeHtml(r.manager)}</td>
-                <td class="qty-cell">${escapeHtml(r.qty)}</td>
+                <td class="qty-cell">${escapeHtml(qtyText(r))}</td>
                 <td>${dateHtml(r)}</td>
                 <td>${badgeHtml(r)}</td>
                 <td class="note-cell"><input class="note-input" value="${escapeHtml(r.note)}" data-act="note" placeholder="-"></td>
@@ -800,8 +845,8 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---------- 엑셀(CSV) 저장 ---------- */
     $('exportBtn').addEventListener('click', () => {
         const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const rows = [['등록일시', '작성자', '사용라인', '자재품번', '품명', '업체', '담당자', '필요수량', '입고일정', '처리현황', '비고']];
-        filteredRecords().forEach((r) => rows.push([r.createdAt, r.writer, r.line, r.partNo, r.partName, r.vendor, r.manager, r.qty, r.arrivalDate, r.status, r.note]));
+        const rows = [['등록일시', '작성자', '사용라인', '자재품번', '연결완제품번호', '품명', '업체', '담당자', '필요수량(EA)', 'BOX수', 'BOX당수량', '입고일정', '처리현황', '비고']];
+        filteredRecords().forEach((r) => rows.push([r.createdAt, r.writer, r.line, r.partNo, r.finishedProduct, r.partName, r.vendor, r.manager, r.qty, r.boxCount, r.boxQty, r.arrivalDate, r.status, r.note]));
         // BOM: 엑셀에서 한글 깨짐 방지
         const csv = '﻿' + rows.map((row) => row.map(cell).join(',')).join('\r\n');
 

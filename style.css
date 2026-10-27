@@ -365,6 +365,15 @@ textarea {
     border: 1px solid #b9cae1;
     font-weight: bold;
     word-break: break-all;
+    color: var(--navy);
+    font: inherit;
+    cursor: pointer;
+}
+
+.finished-product-no.active {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
 }
 
 /* 자동 입력 영역 */
@@ -419,6 +428,23 @@ textarea {
     width: 20px;
     height: 20px;
     accent-color: var(--blue);
+}
+
+/* BOX당 수량 */
+.box-row {
+    margin-top: 10px;
+}
+
+.box-row label {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.box-total {
+    margin-top: 6px;
+    font-weight: bold;
+    color: var(--navy);
+    text-align: right;
 }
 
 /* 필요수량 −/+ */
