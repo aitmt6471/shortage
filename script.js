@@ -59,7 +59,8 @@ function createDemoApi() {
             'A1001-0002': { partName: '너트 M6', vendor: '대성볼트' },
             'B2002-0101': { partName: 'PCB 메인보드', vendor: '한빛전자' }
         },
-        vendors: { '대성볼트': '김민수', '한빛전자': '이지은' }
+        vendors: { '대성볼트': '김민수', '한빛전자': '이지은' },
+        finishedProducts: { 'A1001-0001': ['FG-1000'], 'A1001-0002': ['FG-1000', 'FG-2000'] }
     };
 
     const load = (key, fallback) => {
@@ -112,7 +113,7 @@ function escapeHtml(s) {
 document.addEventListener('DOMContentLoaded', () => {
     const $ = (id) => document.getElementById(id);
 
-    let master = { parts: {}, vendors: {} };
+    let master = { parts: {}, vendors: {}, finishedProducts: {} };
     let records = [];
     let pendingRecord = null;
     let pendingDeleteId = null;
@@ -280,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function applyMaster(data) {
-        master = data;
+        master = { ...data, finishedProducts: data.finishedProducts || {} };
         vendorExact = {};
         vendorLoose = {};
         Object.entries(master.vendors).forEach(([v, m]) => {
@@ -320,6 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!key || !masterLoaded) {
             autoFields.forEach((el) => { el.value = ''; setEditable(el, false); });
             $('saveMasterWrap').classList.add('hidden');
+            showFinishedProducts([]);
             setLookupMsg(masterLoaded ? '' : '자재 정보를 불러오는 중입니다...');
             return;
         }
@@ -340,7 +342,16 @@ document.addEventListener('DOMContentLoaded', () => {
             $('saveMasterWrap').classList.remove('hidden');
             setLookupMsg('⚠ 등록되지 않은 품번입니다. 품명과 업체를 직접 입력해 주세요.', 'warn');
         }
+        showFinishedProducts(master.finishedProducts[key] || []);
         lookupManager();
+    }
+
+    function showFinishedProducts(products) {
+        const uniqueProducts = [...new Set(products.filter(Boolean))];
+        $('finishedProductWrap').classList.toggle('hidden', uniqueProducts.length === 0);
+        $('finishedProductNos').innerHTML = uniqueProducts
+            .map((no) => `<span class="finished-product-no">${escapeHtml(no)}</span>`)
+            .join('');
     }
 
     function lookupManager() {

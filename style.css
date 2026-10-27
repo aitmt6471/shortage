@@ -333,6 +333,40 @@ textarea {
 .lookup-msg.ok { color: var(--done-fg); }
 .lookup-msg.warn { color: var(--danger); }
 
+/* BOM에서 찾은 연결 완제품번호 */
+.finished-product {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 9px 10px;
+    border: 1px solid #cbd8ea;
+    border-radius: 8px;
+    background: #eef4fb;
+    color: var(--navy);
+    font-size: 13px;
+}
+
+.finished-product-label {
+    flex: 0 0 auto;
+    font-weight: bold;
+}
+
+.finished-product-nos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.finished-product-no {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fff;
+    border: 1px solid #b9cae1;
+    font-weight: bold;
+    word-break: break-all;
+}
+
 /* 자동 입력 영역 */
 .auto-box {
     background: #f3f6fa;
