@@ -126,7 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let records = [];
     let pendingRecord = null;
     let pendingDeleteId = null;
-    let selectedFinishedProduct = '';
 
     // 연속 등록 시 다시 입력하지 않도록 기기에 기억해 두는 항목
     // (사용라인은 선택 목록이라 목록을 받은 뒤에 다시 맞춤 → restoreLine)
@@ -306,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
             masterLoaded = true;
             lookup();
         }
-        if (masterLoaded && !$('boxQty').value) fillBoxQty();
+        if (masterLoaded) fillBoxQty();
         partKeys = Object.keys(master.parts).sort();
         $('vendorList').innerHTML = Object.keys(master.vendors).sort()
             .map((v) => `<option value="${escapeHtml(v)}"></option>`)
@@ -333,7 +332,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!key || !masterLoaded) {
             autoFields.forEach((el) => { el.value = ''; setEditable(el, false); });
             $('saveMasterWrap').classList.add('hidden');
-            showFinishedProducts([]);
             setLookupMsg(masterLoaded ? '' : '자재 정보를 불러오는 중입니다...');
             return;
         }
@@ -354,18 +352,8 @@ document.addEventListener('DOMContentLoaded', () => {
             $('saveMasterWrap').classList.remove('hidden');
             setLookupMsg('⚠ 등록되지 않은 품번입니다. 품명과 업체를 직접 입력해 주세요.', 'warn');
         }
-        showFinishedProducts(master.finishedProducts[key] || []);
         fillBoxQty();
         lookupManager();
-    }
-
-    function showFinishedProducts(products) {
-        const uniqueProducts = [...new Set(products.filter(Boolean))];
-        if (!uniqueProducts.includes(selectedFinishedProduct)) selectedFinishedProduct = '';
-        $('finishedProductWrap').classList.toggle('hidden', uniqueProducts.length === 0);
-        $('finishedProductNos').innerHTML = uniqueProducts
-            .map((no) => `<button type="button" class="finished-product-no ${no === selectedFinishedProduct ? 'active' : ''}" data-finished-product="${escapeHtml(no)}" aria-pressed="${no === selectedFinishedProduct}">${escapeHtml(no)}</button>`)
-            .join('');
     }
 
     function lookupManager() {
@@ -444,12 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     $('partNo').addEventListener('blur', () => $('partSuggest').classList.add('hidden'));
     $('partNo').addEventListener('focus', renderSuggest);
-    $('finishedProductNos').addEventListener('click', (e) => {
-        const button = e.target.closest('[data-finished-product]');
-        if (!button) return;
-        selectedFinishedProduct = button.dataset.finishedProduct;
-        showFinishedProducts(master.finishedProducts[$('partNo').value.trim().toUpperCase()] || []);
-    });
     $('vendor').addEventListener('input', lookupManager);
 
     $('clearPartNo').addEventListener('click', () => {
@@ -460,11 +442,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     /* ---------- 필요수량(BOX) / BOX당 수량 ---------- */
-    // MES의 적입량이 1이면 BOX 수량이 등록 안 된 자재이므로 비워 두고 직접 입력하게 함
+    // MES에 적입량이 있으면 자동 입력(수정 불가), 없는 자재만 직접 입력
     function fillBoxQty() {
         const part = master.parts[$('partNo').value.trim().toUpperCase()];
         const per = part ? Number(part.boxQty) : 0;
-        $('boxQty').value = per > 1 ? per : '';
+        const auto = per >= 1;
+        if (auto) $('boxQty').value = per;
+        else if ($('boxQty').readOnly || !$('partNo').value.trim()) $('boxQty').value = '';
+        $('boxQty').readOnly = auto;
+        $('boxQty').placeholder = auto ? '자동 입력' : '적입량 미등록 (직접 입력)';
         updateBoxTotal();
     }
 
@@ -474,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('boxTotal').textContent = (box && per ? `${box}BOX = ${formatNum(box * per)} EA` : 'BOX당 수량을 입력해 주세요');
     }
 
-    $('qty').addEventListener('input', updateBoxTotal);
+    $('qty').addEventListener('input', fillBoxQty);
     $('boxQty').addEventListener('input', updateBoxTotal);
 
     /* ---------- 필요수량 −/+ ---------- */
@@ -482,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
             const next = (parseInt($('qty').value, 10) || 0) + Number(btn.dataset.step);
             $('qty').value = Math.max(1, next);
-            updateBoxTotal();
+            fillBoxQty();
         });
     });
 
@@ -499,7 +485,6 @@ document.addEventListener('DOMContentLoaded', () => {
             writer: $('writer').value.trim(),
             line: lineValue(),
             partNo: $('partNo').value.trim().toUpperCase(),
-            finishedProduct: selectedFinishedProduct,
             partName: $('partName').value.trim(),
             vendor: $('vendor').value.trim(),
             manager: $('manager').value.trim(),
@@ -514,7 +499,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ['작성자', pendingRecord.writer],
             ['사용라인', pendingRecord.line],
             ['자재품번', pendingRecord.partNo],
-            ['연결 완제품번호', pendingRecord.finishedProduct || '-'],
             ['품명', pendingRecord.partName],
             ['업체', pendingRecord.vendor],
             ['담당자', pendingRecord.manager],
