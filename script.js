@@ -712,11 +712,25 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>`;
     }
 
+    // 같은 품번은 붙여서 표시: 품번이 처음 나온 위치에 모으고, 그룹 안 순서는 기존 순서 유지
+    function groupByPartNo(list) {
+        const groups = new Map();
+        list.forEach((r) => {
+            const key = String(r.partNo).trim();
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(r);
+        });
+        return [...groups.values()].flatMap((g) => g.map((r, i) => ({ r, dup: g.length > 1, first: i === 0, last: i === g.length - 1 })));
+    }
+
     function renderRecords() {
         const list = filteredRecords();
+        const grouped = groupByPartNo(list);
+        const dupClass = (g) => (g.dup ? ` dup${g.first ? ' dup-first' : ''}${g.last ? ' dup-last' : ''}` : '');
+        const withDup = (html, g) => html.replace(/class="([^"]*)"/, (_, c) => `class="${c}${dupClass(g)}"`);
 
-        $('recordList').innerHTML = list.map(cardHtml).join('');
-        $('recordsTableBody').innerHTML = list.map(rowHtml).join('');
+        $('recordList').innerHTML = grouped.map((g) => withDup(cardHtml(g.r), g)).join('');
+        $('recordsTableBody').innerHTML = grouped.map((g) => withDup(rowHtml(g.r), g)).join('');
 
         const waitCount = records.filter((r) => r.status !== '완료').length;
         $('noRecords').classList.toggle('hidden', list.length > 0);

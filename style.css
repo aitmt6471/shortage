@@ -1108,3 +1108,9 @@ body.on-status .toast {
     .sheet-handle { display: none; }
     .modal-actions { grid-template-columns: 1fr 1fr; }
 }
+
+/* 같은 품번이 여러 건이면 한 묶음으로 보이게 */
+.rec-card.dup { border-left: 4px solid var(--blue); }
+.rec-card.dup:not(.dup-last) { margin-bottom: 4px; }
+.records-table tr.dup td:first-child { box-shadow: inset 4px 0 0 var(--blue); }
+.records-table tr.dup:not(.dup-last) td { border-bottom-style: dashed; }
