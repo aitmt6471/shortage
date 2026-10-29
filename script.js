@@ -305,7 +305,10 @@ document.addEventListener('DOMContentLoaded', () => {
             masterLoaded = true;
             lookup();
         }
-        if (masterLoaded) fillBoxQty();
+        // 기기에 저장된 예전 목록으로 먼저 채워진 품명·업체가 최신 목록으로 바뀌게 다시 조회
+        // (자동 입력 칸은 수정할 수 없으므로 입력 중인 내용이 지워지지 않음)
+        if (master.parts[$('partNo').value.trim().toUpperCase()]) lookup();
+        else if (masterLoaded) fillBoxQty();
         partKeys = Object.keys(master.parts).sort();
         $('vendorList').innerHTML = Object.keys(master.vendors).sort()
             .map((v) => `<option value="${escapeHtml(v)}"></option>`)
