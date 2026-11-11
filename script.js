@@ -735,6 +735,9 @@ document.addEventListener('DOMContentLoaded', () => {
         $('recordList').innerHTML = grouped.map((g) => withDup(cardHtml(g.r), g)).join('');
         $('recordsTableBody').innerHTML = grouped.map((g) => withDup(rowHtml(g.r), g)).join('');
 
+        // 진단 표시: 서버에서 받은 건수 / 화면에 그린 건수 / 필터·검색 상태
+        $('diag').textContent = `[v15] 서버 ${records.length}건 · 화면 ${list.length}건 · 표 ${$('recordsTableBody').children.length}줄 · 필터 ${currentFilter || '전체'} · 검색 "${$('search').value}"`;
+
         const waitCount = records.filter((r) => r.status !== '완료').length;
         $('noRecords').classList.toggle('hidden', list.length > 0);
         $('cntAll').textContent = records.length;
@@ -835,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             records = fresh;
             renderRecords();
-            showNotification(`삭제했습니다. (남은 ${fresh.length}건 · 화면 v14)`, 'success');
+            showNotification(`삭제했습니다. (남은 ${fresh.length}건 · 화면 v15)`, 'success');
         } catch (err) {
             showNotification('삭제되지 않았습니다. 목록을 다시 불러옵니다.', 'error');
             loadRecords();
