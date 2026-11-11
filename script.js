@@ -14,7 +14,7 @@ const api = DEMO_MODE ? createDemoApi() : createSheetApi();
 
 function createSheetApi() {
     async function get(action) {
-        const res = await fetch(`${SCRIPT_URL}?action=${action}`);
+        const res = await fetch(`${SCRIPT_URL}?action=${action}&_=${Date.now()}`, { cache: 'no-store' }); // 옛 목록이 캐시돼 삭제한 건이 되살아나지 않게
         const result = await res.json();
         if (result.status !== 'success') throw new Error(result.message || '불러오기 실패');
         return result.data;
@@ -824,12 +824,20 @@ document.addEventListener('DOMContentLoaded', () => {
         $('deleteModal').classList.add('hidden');
         if (!pendingDeleteId) return;
         try {
-            await api.deleteRecord(pendingDeleteId);
-            records = records.filter((r) => r.id !== pendingDeleteId);
+            const id = pendingDeleteId;
+            await api.deleteRecord(id);
+            // 실제로 시트에서 지워졌는지 확인 (응답이 오류 페이지로 와도 성공으로 오해하지 않게)
+            let fresh = await api.getRecords();
+            if (fresh.some((r) => r.id === id)) {
+                await api.deleteRecord(id);
+                fresh = await api.getRecords();
+                if (fresh.some((r) => r.id === id)) throw new Error('NOT_DELETED');
+            }
+            records = fresh;
             renderRecords();
             showNotification('삭제했습니다.', 'success');
         } catch (err) {
-            showNotification('삭제 응답을 받지 못했습니다. 목록을 다시 불러옵니다.', 'error');
+            showNotification('삭제되지 않았습니다. 목록을 다시 불러옵니다.', 'error');
             loadRecords();
         } finally {
             pendingDeleteId = null;
