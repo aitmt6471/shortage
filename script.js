@@ -835,7 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             records = fresh;
             renderRecords();
-            showNotification('삭제했습니다.', 'success');
+            showNotification(`삭제했습니다. (남은 ${fresh.length}건 · 화면 v14)`, 'success');
         } catch (err) {
             showNotification('삭제되지 않았습니다. 목록을 다시 불러옵니다.', 'error');
             loadRecords();
